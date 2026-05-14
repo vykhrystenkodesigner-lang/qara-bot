@@ -3,6 +3,7 @@ import logging
 import os
 import json
 from aiohttp import web
+from aiohttp.web_middlewares import middleware
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import (
     Message, CallbackQuery,
@@ -24,6 +25,24 @@ bot = Bot(token=BOT_TOKEN)
 dp  = Dispatcher(storage=MemoryStorage())
 reply_map = {}
 
+# ── CORS middleware ──
+@middleware
+async def cors_middleware(request, handler):
+    if request.method == "OPTIONS":
+        return web.Response(
+            status=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            }
+        )
+    response = await handler(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
 def main_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="💳 Открыть QARA", web_app=WebAppInfo(url=WEBAPP_URL))]],
@@ -43,7 +62,7 @@ def back_inline():
         [InlineKeyboardButton(text="‹ Назад", callback_data="back_main")]
     ])
 
-# ── HTTP endpoint для Mini App ──
+# ── HTTP endpoints ──
 async def handle_support(request: web.Request):
     try:
         data = await request.json()
@@ -73,7 +92,7 @@ async def handle_support(request: web.Request):
         return web.json_response({'ok': False, 'error': str(e)}, status=500)
 
 async def handle_health(request):
-    return web.json_response({'status': 'ok'})
+    return web.json_response({'status': 'ok', 'bot': 'QARA'})
 
 # ── Bot handlers ──
 @dp.message(CommandStart())
@@ -103,8 +122,10 @@ async def cmd_help(message: Message):
 @dp.message(Command("rates"))
 async def cmd_rates(message: Message):
     await message.answer(
-        "📊 <b>Курсы</b>\n\n₿ BTC $67,420 <code>+1.82%</code>\n◆ ETH $3,184 <code>+3.47%</code>\n"
-        "₮ USDT $1.00 <code>+0.01%</code>\n◎ SOL $148.92 <code>-2.14%</code>",
+        "📊 <b>Курсы</b>\n\n₿ BTC $67,420 <code>+1.82%</code>\n"
+        "◆ ETH $3,184 <code>+3.47%</code>\n"
+        "₮ USDT $1.00 <code>+0.01%</code>\n"
+        "◎ SOL $148.92 <code>-2.14%</code>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="📊 Открыть Markets", web_app=WebAppInfo(url=WEBAPP_URL))
@@ -113,10 +134,7 @@ async def cmd_rates(message: Message):
 
 @dp.message(Command("support"))
 async def cmd_support(message: Message):
-    await message.answer(
-        "🆘 <b>Поддержка QARA</b>\n\nНапиши своё сообщение 👇",
-        parse_mode="HTML"
-    )
+    await message.answer("🆘 <b>Поддержка QARA</b>\n\nНапиши своё сообщение 👇", parse_mode="HTML")
 
 @dp.message(Command("referral"))
 async def cmd_referral(message: Message):
@@ -124,7 +142,7 @@ async def cmd_referral(message: Message):
     code = f"QARA{str(uid)[-4:]}"
     link = f"https://t.me/cruptoqara_bot?start=ref_{code}"
     await message.answer(
-        f"🎁 <b>Реферальная программа</b>\n\nПолучай <b>$10 USDT</b> за каждого друга!\n\n"
+        f"🎁 <b>Реферальная программа</b>\n\nПолучай <b>$10 USDT</b> за каждого!\n\n"
         f"Код: <code>{code}</code>\nСсылка: <code>{link}</code>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -136,8 +154,10 @@ async def cmd_referral(message: Message):
 @dp.callback_query(F.data == "rates")
 async def cb_rates(call: CallbackQuery):
     await call.message.edit_text(
-        "📊 <b>Курсы</b>\n\n₿ BTC $67,420 <code>+1.82%</code>\n◆ ETH $3,184 <code>+3.47%</code>\n"
-        "₮ USDT $1.00 <code>+0.01%</code>\n◎ SOL $148.92 <code>-2.14%</code>",
+        "📊 <b>Курсы</b>\n\n₿ BTC $67,420 <code>+1.82%</code>\n"
+        "◆ ETH $3,184 <code>+3.47%</code>\n"
+        "₮ USDT $1.00 <code>+0.01%</code>\n"
+        "◎ SOL $148.92 <code>-2.14%</code>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📊 Markets", web_app=WebAppInfo(url=WEBAPP_URL))],
@@ -184,9 +204,10 @@ async def handle_text(message: Message):
 
     try:
         sent = await bot.send_message(ADMIN_ID,
-            f"💬 <b>Сообщение из бота</b>\n\n👤 {user.full_name}\n🔗 @{user.username or '—'}\n"
-            f"🆔 <code>{user.id}</code>\n\n📝 {message.text}\n\n"
-            f"<i>Ответь на это сообщение чтобы написать пользователю</i>", parse_mode="HTML")
+            f"💬 <b>Сообщение из бота</b>\n\n👤 {user.full_name}\n"
+            f"🔗 @{user.username or '—'}\n🆔 <code>{user.id}</code>\n\n"
+            f"📝 {message.text}\n\n<i>Ответь чтобы написать пользователю</i>",
+            parse_mode="HTML")
         reply_map[sent.message_id] = user.id
     except Exception as e:
         logger.error(f"Forward error: {e}")
@@ -199,8 +220,9 @@ async def handle_text(message: Message):
 
 # ── Main ──
 async def main():
-    app = web.Application()
+    app = web.Application(middlewares=[cors_middleware])
     app.router.add_post('/support', handle_support)
+    app.router.add_options('/support', handle_support)
     app.router.add_get('/health', handle_health)
     runner = web.AppRunner(app)
     await runner.setup()
